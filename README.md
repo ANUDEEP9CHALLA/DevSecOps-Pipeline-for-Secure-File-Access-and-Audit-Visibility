@@ -68,5 +68,7 @@ vault-devops-secure-access/
 ```
 
 
-Author 
--Challa Anudeep Reddy
+# Contributors  
+
+- Challa Anudeep Reddy (https://github.com/ANUDEEP9CHALLA) 
+  
