@@ -1,0 +1,12 @@
+- name: Fetch Vault audit log
+  hosts: vault
+  become: true
+  tasks:
+    - name: Read audit log
+      shell: cat /vault/logs/audit.log
+      register: audit_log
+
+    - name: Save audit log locally
+      copy:
+        content: "{{ audit_log.stdout }}"
+        dest: "./vault_audit_report.txt"
