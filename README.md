@@ -41,17 +41,22 @@ This system is composed of four EC2 instances on AWS:
 
 
 
+```plaintext
 vault-devops-secure-access/
 ├── ansible/
 │   ├── playbooks/
 │   │   ├── assign_access.yml
 │   │   ├── revoke_access.yml
 │   │   └── audit_access.yml
-│   ├── inventory/hosts.ini
-│   └── group_vars/all.yml
+│   ├── inventory/
+│   │   └── hosts.ini
+│   └── group_vars/
+│       └── all.yml
 ├── vault/
-│   ├── config/vault.hcl
-│   ├── policies/case_documents.hcl
+│   ├── config/
+│   │   └── vault.hcl
+│   ├── policies/
+│   │   └── case_documents.hcl
 │   └── scripts/
 │       ├── vault_init.sh
 │       └── create_users.sh
@@ -60,6 +65,7 @@ vault-devops-secure-access/
 └── elk/
     ├── logstash.conf
     └── kibana_dashboard.ndjson
+```
 
 
 Author 
