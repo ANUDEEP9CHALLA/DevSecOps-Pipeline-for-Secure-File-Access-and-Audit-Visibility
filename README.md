@@ -38,3 +38,29 @@ This system is composed of four EC2 instances on AWS:
 - **Ansible Node**: Runs playbooks for user access and audit management
 - **Jenkins Server**: Automates access control lifecycle and document operations
 - **ELK Stack Server**: Collects, indexes, and visualizes audit logs
+
+
+
+vault-devops-secure-access/
+├── ansible/
+│   ├── playbooks/
+│   │   ├── assign_access.yml
+│   │   ├── revoke_access.yml
+│   │   └── audit_access.yml
+│   ├── inventory/hosts.ini
+│   └── group_vars/all.yml
+├── vault/
+│   ├── config/vault.hcl
+│   ├── policies/case_documents.hcl
+│   └── scripts/
+│       ├── vault_init.sh
+│       └── create_users.sh
+├── jenkins/
+│   └── Jenkinsfile
+└── elk/
+    ├── logstash.conf
+    └── kibana_dashboard.ndjson
+
+
+Author 
+-Challa Anudeep Reddy
