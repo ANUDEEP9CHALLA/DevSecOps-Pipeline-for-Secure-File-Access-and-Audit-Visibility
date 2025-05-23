@@ -1,0 +1,227 @@
+This document outlines the complete command-based workflow for setting up, managing, and auditing secure document access using Vault, Ansible, Jenkins, AWS S3, and ELK.
+
+
+## Sample Workflow: End-to-End Process
+
+
+### Step 1: **Vault Initialization**
+
+**Command (on Vault EC2):**
+
+```bash
+vault server -config=/etc/vault/config/vault.hcl
+
+
+**In a second terminal:**
+
+```bash
+export VAULT_ADDR='http://127.0.0.1:8200'
+vault operator init -key-shares=1 -key-threshold=1 > ~/vault_init.txt
+vault operator unseal <Unseal_Key>
+vault login <Root_Token>
+```
+
+**Sample Output (`vault_init.txt`):**
+
+```
+Unseal Key 1: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Initial Root Token: hvs.sxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+---
+
+### Step 2: **Enable Vault Audit Logging**
+
+**Command:**
+
+```bash
+vault audit enable file file_path=/vault/logs/audit.log
+```
+
+**Output:**
+
+```
+Success! Enabled the file audit device at: file/
+```
+
+---
+
+### Step 3: **Create Vault Policy**
+
+**Command:**
+
+```bash
+vault policy write case_documents_policy vault/policies/case_documents_policy.hcl
+```
+
+**Sample `case_documents_policy.hcl`:**
+
+```hcl
+path "secret/data/casefiles/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+```
+
+**Output:**
+
+```
+Success! Uploaded policy: case_documents_policy
+```
+
+---
+
+### Step 4: **Enable Userpass Authentication and Create a User**
+
+**Command:**
+
+```bash
+vault auth enable userpass
+vault write auth/userpass/users/lawyer password="lawyer123" policies="case_documents_policy"
+```
+
+**Output:**
+
+```
+Success! Enabled userpass auth method at: userpass/
+Success! Data written to: auth/userpass/users/lawyer
+```
+
+---
+
+### Step 5: **Assign Access Using Ansible**
+
+**Command:**
+
+```bash
+ansible-playbook ansible/playbooks/assign_access.yml -i ansible/inventory/hosts.ini
+```
+
+**Input Prompts:**
+
+```
+Enter Vault username: lawyer
+Enter Vault password: ********
+Enter Vault token: hvs.sxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+**Output:**
+
+```
+TASK [Create Vault user] => changed
+```
+
+---
+
+### Step 6: **Upload Document to S3 (from Jenkins or CLI)**
+
+**Command:**
+
+```bash
+aws s3 cp /var/lib/jenkins/test_document.pdf s3://vault-bucket-challa/documents/
+```
+
+**Output:**
+
+```
+upload: ./test_document.pdf to s3://vault-bucket-challa/documents/test_document.pdf
+```
+
+---
+
+### Step 7: **Access the Document via Vault (Simulated Client)**
+
+**Command:**
+
+```bash
+VAULT_ADDR=http://<VAULT_EC2_PRIVATE_IP>:8200 vault login -method=userpass username=lawyer password=lawyer123
+vault kv get secret/casefiles/test_document
+```
+
+**Output:**
+
+```yaml
+====== Metadata ======
+Key              Value
+created_time     2025-05-23T12:34:00Z
+version          1
+
+====== Data ======
+content          Confidential legal file
+```
+
+---
+
+### Step 8: **Audit the Access Log**
+
+**Command:**
+
+```bash
+ansible-playbook ansible/playbooks/audit_access.yml -i ansible/inventory/hosts.ini
+```
+
+**Output (saved to `vault_audit_report.txt`):**
+
+```text
+2025-05-23T12:35:05Z user=lawyer path=secret/data/casefiles/test_document operation=read
+```
+
+---
+
+### Step 9: **Visualize in Kibana**
+
+* Open Kibana at: `http://<elk-ec2-public-ip>:5601`
+* Navigate to: **Discover**
+* Use index pattern: `vault-audit-logs`
+* View fields:
+
+  * `auth.display_name`
+  * `request.path`
+  * `request.operation`
+
+**Example Fields:**
+
+```json
+{
+  "auth.display_name": "lawyer",
+  "request.path": "secret/data/casefiles/test_document",
+  "request.operation": "read",
+  "@timestamp": "2025-05-23T12:35:05Z"
+}
+```
+
+---
+
+### Step 10: **Revoke Access (Optional)**
+
+**Command:**
+
+```bash
+ansible-playbook ansible/playbooks/revoke_access.yml -i ansible/inventory/hosts.ini
+```
+
+**Input:**
+
+```
+Enter Vault username to revoke: lawyer
+Enter Vault token: hvs.sxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+**Output:**
+
+```
+TASK [Delete Vault user] => changed
+```
+
+---
+
+## Summary of Sample Results
+
+| Step               | Result                                         |
+| ------------------ | ---------------------------------------------- |
+| Vault initialized  | Keys stored in `vault_init.txt`                |
+| User created       | `lawyer` added to Vault                        |
+| Document uploaded  | S3 path: `s3://vault-bucket-challa/documents/` |
+| Access verified    | Read from Vault using userpass login           |
+| Audit log captured | `vault_audit_report.txt` shows access record   |
+| Logs visualized    | Kibana shows document access log               |
+| Access revoked     | `lawyer` access removed                        |
