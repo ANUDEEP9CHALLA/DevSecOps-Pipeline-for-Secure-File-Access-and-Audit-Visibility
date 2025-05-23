@@ -1,0 +1,96 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+        VAULT_ADDR            = 'http://<vault-server-ip>:8200'
+        VAULT_TOKEN           = credentials('vault-root-token') // Store securely in Jenkins
+    }
+
+    parameters {
+        choice(name: 'ACTION', choices: ['assign', 'revoke', 'audit'], description: 'Vault Access Action')
+        string(name: 'USERNAME', defaultValue: 'john.doe', description: 'Vault Username')
+        string(name: 'USER_PASSWORD', defaultValue: 'TempPass123!', description: 'Temporary password (for assign only)')
+        string(name: 'DOCUMENT_PATH', defaultValue: '/tmp/doc.pdf', description: 'Local file to upload to S3 (only for assign)')
+        string(name: 'S3_BUCKET_PATH', defaultValue: 's3://your-secure-bucket/case-files/', description: 'S3 target path')
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Access Management') {
+            steps {
+                script {
+                    if (params.ACTION == 'assign') {
+                        sh """
+                        ansible-playbook ansible/assign_access.yml \\
+                          -i ansible/inventory/hosts.ini \\
+                          -e username=${params.USERNAME} \\
+                          -e user_password=${params.USER_PASSWORD} \\
+                          -e vault_token=${VAULT_TOKEN} \\
+                          -e vault_addr=${VAULT_ADDR}
+                        """
+                    } else if (params.ACTION == 'revoke') {
+                        sh """
+                        ansible-playbook ansible/revoke_access.yml \\
+                          -i ansible/inventory/hosts.ini \\
+                          -e username=${params.USERNAME} \\
+                          -e vault_token=${VAULT_TOKEN} \\
+                          -e vault_addr=${VAULT_ADDR}
+                        """
+                    } else if (params.ACTION == 'audit') {
+                        sh """
+                        ansible-playbook ansible/audit_access.yml \\
+                          -i ansible/inventory/hosts.ini \\
+                          -e vault_token=${VAULT_TOKEN} \\
+                          -e vault_addr=${VAULT_ADDR}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Upload Document to S3 (only for assign)') {
+            when {
+                expression { params.ACTION == 'assign' && fileExists(params.DOCUMENT_PATH) }
+            }
+            steps {
+                script {
+                    def s3Target = "${params.S3_BUCKET_PATH}${params.USERNAME}/" 
+                    sh """
+                    echo "Uploading ${params.DOCUMENT_PATH} to ${s3Target}"
+                    aws s3 cp ${params.DOCUMENT_PATH} ${s3Target}
+                    """
+                }
+            }
+        }
+
+        stage('Archive Audit Log (only for audit)') {
+            when {
+                expression { params.ACTION == 'audit' }
+            }
+            steps {
+                sh '''
+                TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                cp docs/access_audit_report_sample.txt logs/audit_$TIMESTAMP.txt
+                aws s3 cp logs/audit_$TIMESTAMP.txt s3://your-secure-bucket/audits/
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Jenkins pipeline executed successfully."
+        }
+        failure {
+            echo "❌ Pipeline failed. Please check the logs."
+        }
+    }
+}
